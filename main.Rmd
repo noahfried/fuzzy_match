@@ -1,0 +1,77 @@
+---
+title: "Merging Gentzkow Replication Data with Census Places"
+author: "nwfried"
+date: "2024-03-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Initialising libraries.
+```{r}
+library(tidyverse)
+library(fedmatch)
+```
+Loading in data.
+```{r}
+cities <- read_tsv("30261-0006-Data.tsv")
+census_places <- read_csv("places2msa1970.csv")
+```
+
+First, we need to deal with the fact that Gentzkow's cities dataframe contains city names in all caps and the Census dataframe doesn't. This won't work with fuzzy match, so let's format both of these in all lowercase.
+```{r}
+cities$cityname_constant <- tolower(cities$cityname_constant)
+census_places$NAME <- tolower(census_places$NAME)
+census_places$PLACE <- tolower(census_places$PLACE)
+```
+Next, we can fuzzy match based on the "NAME" column. 
+```{r}
+fuzzy_merge <- merge_plus(data1 = census_places,
+           data2 = cities,
+           by.x = "NAME",
+           by.y = "cityname_constant", match_type = "fuzzy",
+           unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid")
+
+name_result <- fuzzy_merge$matches
+```
+Let's look at this result.
+```{r}
+head(name_result)
+```
+The problem here is that many place names are often reused, so the fuzzy match will match cities with the same name in different states e.g. Springfield, Illinois is matched will all other Springfields. We can use the county numbers of each city (found in the cnty90 and fips_2 columns, respectively) to make sure that the cities matched by the fuzzy match are actually the same. (we could also check this with state names, but I thought more specificty would be better at avoiding false positives).
+
+First, we have to account for the fact that the four-digit county numbers in the Census dataframe are prefixed with a "0," while the ones in the city databse are not. Let's add this 0 to the city database.
+```{r}
+cnty_number <- cities$cnty90
+fixed_cnty_number <- sprintf("%05d", cnty_number) #fix to 5 character width
+cities <- cbind(fixed_cnty_number, cities) #add to dataset
+```
+Now we can do another fuzzy match and then filter out only the entries with matching county numbers.
+```{r}
+merge2 <- merge_plus(data1 = census_places,
+           data2 = cities,
+           by.x = "NAME",
+           by.y = "cityname_constant", match_type = "fuzzy",
+           unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid")
+result2 <- merge2$matches
+```
+
+```{r}
+filtered_result2 <- filter(result2, fixed_cnty_number == fips_2)
+head(filtered_result2)
+```
+This gives us a list of 289 matched cities and census places. This is around a tenth of size of the original Gentzkow dataset and a fifth of the size of the initial fuzzy match merge. I'm wondering if there's some issue with the county filtering in that it's a bit too strict, given that ~1000 matches were dropped because the county numbers didn't match.
+
+We can try filtering by state to see if this relaxes restrictions a bit. Again, we must set both datasets's state column to lowercase to deal with case sensitivity.
+```{r}
+cities$state <- tolower(cities$state)
+census_places$STATE <- tolower(cities$state)
+
+state_merge <- merge_plus(data1 = census_places,
+           data2 = cities,
+           by.x = "NAME",
+           by.y = "cityname_constant", match_type = "fuzzy",
+           unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid") # merge again
+```
+
