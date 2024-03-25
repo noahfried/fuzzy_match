@@ -4,7 +4,7 @@ author: "nwfried"
 date: "2024-03-18"
 output: pdf_document
 ---
-
+# Data Wrangling
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -55,6 +55,8 @@ merge2 <- merge_plus(data1 = census_places,
            by.y = "cityname_constant", match_type = "fuzzy",
            unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid")
 result2 <- merge2$matches
+unmatched_census <- merge2$data1_nomatch
+unmatched_cities <- merge2$data2_nomatch
 ```
 
 ```{r}
@@ -66,12 +68,44 @@ This gives us a list of 289 matched cities and census places. This is around a t
 We can try filtering by state to see if this relaxes restrictions a bit. Again, we must set both datasets's state column to lowercase to deal with case sensitivity.
 ```{r}
 cities$state <- tolower(cities$state)
-census_places$STATE <- tolower(cities$state)
+census_places$STATE <- tolower(census_places$STATE)
 
 state_merge <- merge_plus(data1 = census_places,
            data2 = cities,
            by.x = "NAME",
            by.y = "cityname_constant", match_type = "fuzzy",
-           unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid") # merge again
+           unique_key_1 = "NHGISPLACE", unique_key_2 = "citypermid") # merge again with changes to datasets
+state_result <- state_merge$matches
+
+filtered_state_result <- filter(state_result, state == STATE) # create dataset with matching states
+head(filtered_state_result)
+
+state_merge_residue <- filter(state_result, state != STATE) # preserve data without matching states for later analysis
+```
+This returns around 540 matched cities and census places, filtering by state name.
+
+# Analysis
+
+## False matches
+We can make it a little easier to look at this dataset by extracting only the most relevant columns.
+```{r}
+extracted_state_result <- filtered_state_result[,c("STATE", "PLACE", "namemsa", "NAME", "cityname_constant", "state")]
 ```
 
+```{r}
+filter(extracted_state_result, cityname_constant != NAME)
+```
+Filtering this dataset for place names that do not match yields only these three results. This should mean that the only entries with different city names are these three, of which the Los Altos/Los Gatos match seems to be the only false association.
+
+Thus the only possible remaining false matches will be cities with the same name in the same state, which is hopefully only a handful. (I tried doing some research on this but I could only find various Reddit/Quora threads; there wasn't a definitive answer on how many of these places exist.)
+
+## Unmatched cities
+This is where it gets a bit more tricky.
+First, we can look at the places that weren't matched at all in the fuzzy match: these seem to roughly fall into two categories. 
+
+* Places like North Attleboro, MA -- there are a few cities near this in the unmatched Census data (same county) but no exact match. If we want to match these places, we could probably do this by looking at county number, but this might be dubious because they are ultimately different cities.
+* Places like Dubois, PA -- there's nothing in this county in the Census data: presumably just not in the dataset.
+
+There also seem to be some larger cities that are not getting matched because of differences in which they are labelled: for instance, "south chicago" exists in the unmatched_cities dataset and "south chicago heights" exists in the unmatched_census dataset. It might be prudent to go through some of the major cities to see if there are any other examples like this.
+
+In general, major cities seem to be the biggest issue with this system of merging. I tried to look for New York to see how it was merged in this process, but I couldn't find the original cities entry for "manhattan" in either the unmatched cities dataset or the matched dataset. This led me to believe that it had been incorrectly matched (say, with Manhattan, Kansas) and subsequently filtered out, so I created a dataset (state_merge_residue) to keep track of the cities that were matched and then filtered out because the state columns were different. But I couldn't find the "manhattan" entry here either. I'm not sure where exactly this particular entry got removed, but it's definitely possible that something similar has happened to other major cities.
