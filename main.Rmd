@@ -109,3 +109,78 @@ First, we can look at the places that weren't matched at all in the fuzzy match:
 There also seem to be some larger cities that are not getting matched because of differences in which they are labelled: for instance, "south chicago" exists in the unmatched_cities dataset and "south chicago heights" exists in the unmatched_census dataset. It might be prudent to go through some of the major cities to see if there are any other examples like this.
 
 In general, major cities seem to be the biggest issue with this system of merging. I tried to look for New York to see how it was merged in this process, but I couldn't find the original cities entry for "manhattan" in either the unmatched cities dataset or the matched dataset. This led me to believe that it had been incorrectly matched (say, with Manhattan, Kansas) and subsequently filtered out, so I created a dataset (state_merge_residue) to keep track of the cities that were matched and then filtered out because the state columns were different. But I couldn't find the "manhattan" entry here either. I'm not sure where exactly this particular entry got removed, but it's definitely possible that something similar has happened to other major cities.
+
+
+## Manual Matching
+We can try to bring the major cities that have been dropped back into this merge manually.
+
+Creating a dataframe to store our manual matches:
+```{r}
+manual_matches <- head(cities, 0)
+manual_matches <- cbind(manual_matches, head(census_places, 0))
+# colnames(manual_matches) <- c(paste0("cities_", colnames(cities)), paste0("census_places_", colnames(census_places)))
+colnames(manual_matches) <- c(paste0(colnames(cities)), paste0(colnames(census_places)))
+```
+
+Let's first try matching Manhattan-New York manually:
+```{r}
+# Manhattan
+match_nyc_city <- cities[cities$citypermid == 148, ]
+match_nyc_census <- census_places[census_places$PLACE == "new york city", ]
+manual_matches <- rbind(manual_matches, c(match_nyc_city, match_nyc_census))
+```
+This is kind of tedious, we can write a function to speed it up a bit:
+```{r}
+new_manual_match <- function(manual_matches, id_cities, id_census_places) {
+  match_cities <- cities[cities$citypermid == id_cities, ]
+  match_census <- census_places[census_places$PLACE == id_census_places, ]
+  new_match <- c(match_cities, match_census)
+  manual_matches <- rbind(manual_matches, new_match)
+  return(manual_matches)
+}
+```
+
+Let's test the function:
+```{r}
+# Test with Bronx-New York match
+manual_matches <- new_manual_match(manual_matches, 1944, "new york city")
+```
+
+Now we can use a hashmap to store all of our manual matches and just pass that to the function. That way if we want to add a new match we can just add it to the hashmap.
+
+```{r}
+manual_matches_map <- list(
+  "queens" = list(permid = 2042, place= "new york city"),
+  "brooklyn" = list(permid = 394, place= "new york city"),
+  "staten island" = list(permid = 1647, place = "new york city"),
+  "south chicago heights" = list(permid = 766, place = "south chicago heights village"),
+  "austin texas" = list(permid = 549, place = "austin city"),
+  "columbus ohio" = list(permid = 386, place = "columbus city"),
+  "indianapolis" = list(permid = 319, place = "indianapolis city (remainder)"), # what does remainder mean?
+  "nashville" = list(permid = 47037, place = "nashville-davidson metropolitan government (balance)"),
+  "las vegas" = list(permid = 1839, place = "las vegas city"),
+  "mesa" = list(permid = 20, place = "mesa city"),
+  "miami" = list(permid = 62, place = "miami city"), #census data contains both miami and miami beach
+  "virginia beach" = list(permid = 215, place = "virginia beach city") #include norfolk as well?
+  
+)
+```
+
+
+Iterate over this hashmap and add each entry to our manual_matches dataframe.
+```{r}
+for (i in manual_matches_map) {
+  id_cities <- i$permid
+  id_census_places <- i$place
+  match_cities <- cities[cities$citypermid == id_cities, ]
+  match_census <- census_places[census_places$PLACE == id_census_places, ]
+  new_match <- c(match_cities, match_census)
+  manual_matches <- rbind(manual_matches, new_match)
+}
+```
+Some places can't be identified by their census place name because there are multiple entries for one place name. Let's fix these manually:
+```{r}
+manual_matches <- rbind(manual_matches, c(cities[cities$citypermid == 533, ], census_places[census_places$NHGISPLACE == "G410590000", ])) #Portland, OR match
+manual_matches <- rbind(manual_matches, c(cities[cities$citypermid == 2023, ], census_places[census_places$NHGISPLACE == "G480040000", ]))
+```
+Now we have a dataframe complete with our manual matches that can easily be added to and appended to our main dataframe.
