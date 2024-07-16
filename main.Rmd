@@ -99,18 +99,6 @@ Filtering this dataset for place names that do not match yields only these three
 
 Thus the only possible remaining false matches will be cities with the same name in the same state, which is hopefully only a handful. (I tried doing some research on this but I could only find various Reddit/Quora threads; there wasn't a definitive answer on how many of these places exist.)
 
-## Unmatched cities
-This is where it gets a bit more tricky.
-First, we can look at the places that weren't matched at all in the fuzzy match: these seem to roughly fall into two categories. 
-
-* Places like North Attleboro, MA -- there are a few cities near this in the unmatched Census data (same county) but no exact match. If we want to match these places, we could probably do this by looking at county number, but this might be dubious because they are ultimately different cities.
-* Places like Dubois, PA -- there's nothing in this county in the Census data: presumably just not in the dataset.
-
-There also seem to be some larger cities that are not getting matched because of differences in which they are labelled: for instance, "south chicago" exists in the unmatched_cities dataset and "south chicago heights" exists in the unmatched_census dataset. It might be prudent to go through some of the major cities to see if there are any other examples like this.
-
-In general, major cities seem to be the biggest issue with this system of merging. I tried to look for New York to see how it was merged in this process, but I couldn't find the original cities entry for "manhattan" in either the unmatched cities dataset or the matched dataset. This led me to believe that it had been incorrectly matched (say, with Manhattan, Kansas) and subsequently filtered out, so I created a dataset (state_merge_residue) to keep track of the cities that were matched and then filtered out because the state columns were different. But I couldn't find the "manhattan" entry here either. I'm not sure where exactly this particular entry got removed, but it's definitely possible that something similar has happened to other major cities.
-
-
 ## Manual Matching
 We can try to bring the major cities that have been dropped back into this merge manually.
 
@@ -139,6 +127,15 @@ new_manual_match <- function(manual_matches, id_cities, id_census_places) {
   return(manual_matches)
 }
 ```
+```{r}
+new_manual_match_nhgis <- function(manual_matches, id_cities, id_census_places) {
+  match_cities <- cities[cities$citypermid == id_cities, ]
+  match_census <- census_places[census_places$NHGISPLACE == id_census_places, ]
+  new_match <- c(match_cities, match_census)
+  manual_matches <- rbind(manual_matches, new_match)
+  return(manual_matches)
+}
+```
 
 Let's test the function:
 ```{r}
@@ -156,18 +153,107 @@ manual_matches_map <- list(
   "south chicago heights" = list(permid = 766, place = "south chicago heights village"),
   "austin texas" = list(permid = 549, place = "austin city"),
   "columbus ohio" = list(permid = 386, place = "columbus city"),
-  "indianapolis" = list(permid = 319, place = "indianapolis city (remainder)"), # what does remainder mean?
+  "indianapolis" = list(permid = 319, place = "indianapolis city (remainder)"), 
   "nashville" = list(permid = 47037, place = "nashville-davidson metropolitan government (balance)"),
   "las vegas" = list(permid = 1839, place = "las vegas city"),
   "mesa" = list(permid = 20, place = "mesa city"),
-  "miami" = list(permid = 62, place = "miami city"), #census data contains both miami and miami beach
-  "virginia beach" = list(permid = 215, place = "virginia beach city") #include norfolk as well?
-  
+  "miami" = list(permid = 62, place = "miami city"), 
+  "virginia beach, VA" = list(permid = 215, place = "virginia beach city"), 
+  "lexington, KY" = list(permid = 575, place = "lexington-fayette"),
+  "chandler, AZ" = list(permid = 2143, place = "chandler city"),
+  "st. petersburg, FL" = list(permid = 64, place = "st. petersburg city"),
+  "st. petersburg, FL pt II" = list(permid = 64, place = "st. petersburg beach city"),
+  "chesapeake, VA" = list(permid = 215, place = "chesapeake city"),
+  "scottsdale, AZ" = list(permid = 20, place = "scottsdale city"),
+  "tempe, AZ" = list(permid = 20, place = "tempe city"),
+  "boise, ID" = list(permid = 313, place = "boise city city"),
+  "norfolk, VA" = list(permid = 215, place = "norfolk city"),
+  "portsmouth, VA" = list(permid = 215, place = "portsmouth city"),
+  "fremont, CA" = list(permid = 31, place = "fremont city"),
+  "fayetteville, NC"= list(permid = 1529, place = "fayetteville city"),
+  "columbus, GA" = list(permid = 453, place = "columbus city (remainder)"),
+  "olathe, KS" = list(permid = 98, place = "olathe city"),
+  "overland park, KS" = list(permid = 98, place = "overland park city"),
+  "grand rapids, MI" = list(permid = 485, place = "grand rapids city"),
+  "newport news, VA" = list(permid = 214, place = "newport news city"),
+  "mobile, AL" = list(permid = 15, place = "mobile city"),
+  "prichard, AL" = list(permid = 15, place = "prichard city"),
+  "chickasaw, AL" = list(permid = 15, place = "chickasaw city"),
+  "oceanside, CA" = list(permid = 29, place = "oceanside city"),
+  "carlsbad city, CA" = list(permid = 29, place = "carlsbad city"),
+  "escondido city, CA" = list(permid = 29, place = "escondido city"),
+  "vista city, CA" = list(permid = 29, place = "vista city")
+)
+```
+
+Around halfway through the Wikipedia list of cities I noticed that there are a few Census places with duplicate names, which means we can't store them by referencing just the place name. We can get around this by instead storing and referencing the unique NHGISPLACE name for each entry. This is probably better practice anyway.
+List for manual matches by NHGISPLACE instead of place name:
+```{r}
+manual_matches_map_nhgis <- list(
+  "portland, OR" = list(permid = 533, nhgis = "G410590000"),
+  "arlington, TX" = list(permid = 2023, nhgis = "G480040000"),
+  "madison, WI" = list(permid = 559, nhgis = "G550480000"),
+  "newark, CA" = list(permid = 31, nhgis = "G060509160"),
+  "jacksonville, FL" = list(permid = 612, nhgis = "G120350000"),
+  "rochester, NY" = list(permid = 519, nhgis = "G270548800"),
+  "hampton, VA" = list(permid = 214, nhgis = "G510350000"),
+  "ontario, CA" = list(permid = 38, nhgis = "G060538960"),
+  "upland, CA" = list(permid = 38, nhgis = "G060813440"),
+  "pomona, CA" = list(permid = 38, nhgis = "G060580720"),
+  "springfield, MO" = list(permid = 712, nhgis = "G290700000"),
+  "lanacster, CA" = list(permid = 34, nhgis = "G060401300"),
+  "palmdale, CA" = list(permid = 34, nhgis = "G060551560"),
+  "hollywood, FL" = list(permid = 2015, nhgis = "G120320000"),
+  "springfield, MA" = list(permid = 334, nhgis = "G250670000"),
+  "kansas city, KS" = list(permid = 901, nhgis = "G200360000"),
+  "sunnyvale, CA" = list(permid = 47, nhgis = "G060770000"),
+  "mountain view, CA" = list(permid = 47, nhgis = "G060496700"),
+  "bridgeport, CT" = list(permid = 51, nhgis = "G090080000"),
+  "pasadena, TX" = list(permid = 2024, nhgis = "G480560000"),
+  "rockford, IL" = list(permid = 83, nhgis = "G170650000"),
+  "loves park, IL" = list(permid = 83, nhgis = "G170450310"),
+  "gainesville, FL" = list(permid = 756, nhgis = "G120251750"),
+  "jackson, MS" = list(permid = 633, nhgis = "G280360000"),
+  "columbia, SC" = list(permid = 544, nhgis = "G450160000"),
+  "cedar rapids, IA" = list(permid = 92, nhgis = "G190120000"),
+  "marion, IA" = list(permid = 92, nhgis = "G190494850"),
+  "kent, WA" = list(permid = 218, nhgis = "G530354150"),
+  "renton, WA" = list(permid = 218, nhgis = "G530577450"),
+  "auburn, WA" = list(permid = 218, nhgis = "G530031800"),
+  "fargo, ND" = list(permid = 154, nhgis = "G380257000"),
+  "moorhead, ND" = list(permid = 154, nhgis = "G270438640"), #note: seems to be classified weirdly in Census dataset
+  "carrollton, TX" = list(permid = 2186, nhgis = "G480130240"),
+  "columbia, MO" = list(permid = 1315, nhgis = "G290156700"),
+  "abilene, TX" = list(permid = 847, nhgis = "G480010000"),
+  "college station, TX" = list(permid = 209, nhgis = "G480159760"),
+  "bryan, TX" = list(permid = 209, nhgis = "G480109120"),
+  "wilmington, NC" = list(permid = 527, nhgis = "G370744400"),
+  "rochester, MN" = list(permid = 1028, nhgis = "G270548800"),
+  "concord, CA" = list(permid = 1989, nhgis = "G060160000"),
+  "independence, MO" = list(permid = 800, nhgis = "G290350000"),
+  "fairfield, CA" = list(permid = 30, nhgis = "G060231820"),
+  "suisun, CA" = list(permid = 30, nhgis = "G060756300"),
+  "richmond, CA" = list(permid = 24, nhgis = "G060606200"),
+  "berkeley, CA" = list(permid = 24, nhgis = "G060060000"),
+  "clearwater, FL" = list(permid = 64, nhgis = "G120128750"),
+  "manchester, NH" = list(permid = 501, nhgis = "G330451400"),
+  "tuscaloosa, AL" = list(permid = 18, nhgis = "G010772560"),
+  "northport, AL" = list(permid = 18, nhgis = "G010552000"),
+  "ventura, CA" = list(permid = 303, nhgis = "G060650420"),
+  "hillsboro, OR" = list(permid = 1600, nhgis = "G410341000"),
+  "edinburg, TX" = list(permid = 1808, nhgis = "G480226600"),
+  "west covina, CA" = list(permid = 45, nhgis = "G060842000"),
+  "san gabriel, CA" = list(permid = 45, nhgis = "G060670420"),
+  "south bend, IN" = list(permid = 91, nhgis = "G180710000"),
+  "mishawka, IN" = list(permid = 91, nhgis = "G180499320"),
+  "quincy, MA" = list(permid = 1014, nhgis = "G250557450"),
+  "davenport, IA" = list(permid = 190, nhgis = "G190190000"),
+  "bettendorf, IA" = list(permid = 190, nhgis = "G190063550")
 )
 ```
 
 
-Iterate over this hashmap and add each entry to our manual_matches dataframe.
+Iterate over the first hashmap and add each entry to our manual_matches dataframe.
 ```{r}
 for (i in manual_matches_map) {
   id_cities <- i$permid
@@ -175,12 +261,23 @@ for (i in manual_matches_map) {
   match_cities <- cities[cities$citypermid == id_cities, ]
   match_census <- census_places[census_places$PLACE == id_census_places, ]
   new_match <- c(match_cities, match_census)
-  manual_matches <- rbind(manual_matches, new_match)
+  manual_matches <- bind_rows(manual_matches, new_match)
 }
 ```
-Some places can't be identified by their census place name because there are multiple entries for one place name. Let's fix these manually:
+Iterate over the other hashmap and do the same thing.
 ```{r}
-manual_matches <- rbind(manual_matches, c(cities[cities$citypermid == 533, ], census_places[census_places$NHGISPLACE == "G410590000", ])) #Portland, OR match
-manual_matches <- rbind(manual_matches, c(cities[cities$citypermid == 2023, ], census_places[census_places$NHGISPLACE == "G480040000", ]))
+for (i in manual_matches_map_nhgis) {
+  id_cities <- i$permid
+  id_census_places <- i$nhgis
+  match_cities <- cities[cities$citypermid == id_cities, ]
+  match_census <- census_places[census_places$NHGISPLACE == id_census_places, ]
+  new_match <- c(match_cities, match_census)
+  manual_matches <- bind_rows(manual_matches, new_match)
+}
 ```
-Now we have a dataframe complete with our manual matches that can easily be added to and appended to our main dataframe.
+
+### Takeaways:
+Full information can be found on the [spreadsheet tracker](https://docs.google.com/spreadsheets/d/17T5rD9M4gP-UVLc_0cfu2rjyxg28vg85rVB60uc8Q9Q/edit?pli=1&gid=0#gid=0),but here are a few thoughts:
+The Gentzkow data has an annoying habit of combining cities seemingly arbitrarily, especially in California for some reason, e.g. Richmond-Berkeley instead of Richmond and Berkeley. This is weird, because while these places are usually close to each other, they are distinct cities, and it causes the fuzzy match to fail. In the case that one of these cities appears in the Wikipedia dataset (so in this running example, if one of either Richmond or Berkely appears), I decided to match all associated Census places to this one Gentzkow entry.
+
+
